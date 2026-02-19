@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Service Management System | Professional v3.0</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <style>
+        :root { --sidebar-bg: #1d2327; --app-bg: #f0f0f1; --accent-blue: #2271b1; }
+        body { background-color: var(--app-bg); font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; margin: 0; display: flex; }
+        #sidebar { width: 190px; background: var(--sidebar-bg); min-height: 100vh; flex-shrink: 0; color: #c3c4c7; display: flex; flex-direction: column; position: sticky; top: 0; }
+        .sidebar-brand { padding: 15px; font-size: 13px; color: #f0f0f1; border-bottom: 1px solid #3c434a; margin-bottom: 10px; font-weight: 600; }
+        .side-item { padding: 10px 15px; font-size: 14px; cursor: pointer; display: flex; align-items: center; transition: 0.2s; }
+        .side-item i { margin-right: 10px; }
+        .side-item:hover, .side-item.active { background: var(--accent-blue); color: white; }
+        #main-content { flex-grow: 1; padding: 25px; }
+        .wp-card { background: white; border: 1px solid #c3c4c7; padding: 20px; border-radius: 4px; box-shadow: 0 1px 1px rgba(0,0,0,.04); margin-bottom: 20px; }
+        .stat-label { font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; }
+        .stat-value { font-size: 28px; font-weight: 700; color: #1d2327; }
+        .badge-unit { background: white; border: 1px solid #c3c4c7; padding: 6px 15px; border-radius: 20px; font-size: 12px; font-weight: 700; color: var(--accent-blue); }
+        .hidden { display: none !important; }
+        .btn-primary-wp { background: var(--accent-blue); color: white; border: none; padding: 6px 18px; border-radius: 3px; font-size: 13px; }
+        .svc-tag { background: #f6f7f7; border: 1px solid #c3c4c7; padding: 3px 10px; border-radius: 3px; font-size: 12px; display: inline-flex; align-items: center; gap: 5px; color: #2c3338; }
+        .svc-tag i { color: #d63638; cursor: pointer; }
+        .table th { font-size: 11px; text-transform: uppercase; color: #50575e; font-weight: 600; padding: 15px 8px; letter-spacing: 0.5px; }
+    </style>
+</head>
+<body>
+
+<div id="authOverlay" class="hidden" style="position: fixed; inset: 0; background: #f0f0f1; z-index: 9999; display: flex; align-items: center; justify-content: center;">
+    <div class="wp-card" style="width: 320px; text-align: center; border-top: 4px solid var(--accent-blue);">
+        <i class="bi bi-shield-lock-fill text-primary" style="font-size: 40px;"></i>
+        <h5 class="my-3 fw-bold">Admin Authentication</h5>
+        <input type="password" id="accessKeyInput" class="form-control mb-3 text-center shadow-none" placeholder="Enter Access Key">
+        <button class="btn-primary-wp w-100" onclick="validateAccess()">Unlock System</button>
+        <p id="authError" class="text-danger small mt-2 hidden">Invalid Access Key!</p>
+    </div>
+</div>
+
+<div id="sidebar">
+    <div class="sidebar-brand"><i class="bi bi-cpu-fill"></i> MANAGEMENT SYSTEM</div>
+    <div class="side-item active" id="nav-dash" onclick="navigateTo('dashboard')"><i class="bi bi-speedometer2"></i> Dashboard</div>
+    <div class="side-item" id="nav-form" onclick="navigateTo('form')"><i class="bi bi-plus-circle"></i> New Entry</div>
+    
+    <div class="px-3 mt-auto mb-3">
+        <button class="btn btn-sm btn-outline-secondary w-100 shadow-none" style="font-size: 10px; border-color: #3c434a; color: #c3c4c7;" onclick="copyAccessLink()">
+            <i class="bi bi-link-45deg"></i> COPY SHOP LINK
+        </button>
+    </div>
+
+    <div id="masterPanel" class="px-3 mb-4 hidden">
+        <hr style="border-color: #3c434a;">
+        <label class="small text-muted fw-bold mb-2" style="font-size: 10px;">MASTER CONTROL</label>
+        <select id="unitSelector" class="form-select form-select-sm bg-dark text-white border-secondary shadow-none mb-3" onchange="loadGlobalData()">
+            <option value="all">All Shop Units</option>
+        </select>
+        <button class="btn btn-sm btn-outline-warning w-100 mb-2" style="font-size: 10px;" onclick="updateMasterKey()">
+            <i class="bi bi-key-fill"></i> CHANGE KEY
+        </button>
+        <button class="btn btn-sm btn-danger w-100" style="font-size: 10px;" onclick="terminateSession()">
+            <i class="bi bi-box-arrow-right"></i> LOGOUT
+        </button>
+    </div>
+</div>
+
+<div id="main-content">
+    <div id="view-dashboard">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2 style="font-weight: 400; font-size: 23px; margin:0;">Operational Overview</h2>
+            <div class="badge-unit"><i class="bi bi-shop me-2"></i><span id="displayUnitID">UNIT_ID</span></div>
+        </div>
+
+        <div class="row g-3 mb-4">
+            <div class="col-md-4"><div class="wp-card"><div class="stat-label">Total Records</div><div class="stat-value" id="stat-count">0</div></div></div>
+            <div class="col-md-4"><div class="wp-card"><div class="stat-label">Gross Revenue</div><div class="stat-value" id="stat-revenue">₹0.00</div></div></div>
+            <div class="col-md-4"><div class="wp-card"><div class="stat-label">Active Services</div><div class="stat-value" id="stat-services">0</div></div></div>
+        </div>
+
+        <div class="wp-card mb-4" id="serviceConfigSection">
+            <h6 class="fw-bold mb-3" style="font-size: 14px;">Service Configuration</h6>
+            <div class="d-flex gap-2 mb-3">
+                <input type="text" id="serviceInput" class="form-control form-control-sm w-25 shadow-none" placeholder="Add New Service...">
+                <button class="btn-primary-wp" onclick="registerService()">Add Service</button>
+            </div>
+            <div id="serviceRegistry" class="d-flex flex-wrap gap-2"></div>
+        </div>
+
+        <div class="row g-3 mb-4">
+            <div class="col-md-8"><div class="wp-card"><canvas id="revenueChart" height="250"></canvas></div></div>
+            <div class="col-md-4"><div class="wp-card"><canvas id="distributionChart" height="250"></canvas></div></div>
+        </div>
+
+        <div class="wp-card p-0 overflow-hidden">
+            <div class="p-3 border-bottom d-flex justify-content-between align-items-center">
+                <input type="text" id="dataFilter" class="form-control form-control-sm w-50 shadow-none" 
+                       placeholder="Search by name, phone, date, service, or amount..." onkeyup="executeSearch()">
+                <button class="btn btn-sm btn-link text-muted text-decoration-none" onclick="loadGlobalData()">Sync Data</button>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm mb-0">
+                    <thead>
+                        <tr>
+                            <th class="ps-3">Customer</th>
+                            <th>Phone</th>
+                            <th>Date & Time</th>
+                            <th>Service</th>
+                            <th>Amount</th>
+                            <th>Status</th>
+                            <th class="pe-3 text-end">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="recordTableBody" class="small"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div id="view-form" class="hidden">
+        <div class="row justify-content-center mt-5">
+            <div class="col-md-5">
+                <div class="wp-card">
+                    <h4 class="mb-4 fw-bold">Add Service Entry</h4>
+                    <form id="submissionForm">
+                        <div class="mb-3"><label class="form-label small fw-bold">Customer Name</label><input type="text" id="entryName" class="form-control shadow-none" required></div>
+                        <div class="mb-3"><label class="form-label small fw-bold">Phone Number</label><input type="tel" id="entryPhone" class="form-control shadow-none" required></div>
+                        <div class="row mb-3">
+                            <div class="col"><label class="small text-muted">Date</label><input type="date" id="sysDate" class="form-control bg-light" readonly></div>
+                            <div class="col"><label class="small text-muted">Time</label><input type="time" id="sysTime" class="form-control bg-light" readonly></div>
+                        </div>
+                        <div class="mb-3"><label class="form-label small fw-bold">Service Type</label><select id="entryType" class="form-select shadow-none"></select></div>
+                        <div class="mb-4"><label class="form-label small fw-bold">Amount (₹)</label><input type="number" id="entryAmount" class="form-control shadow-none" required></div>
+                        <button type="submit" class="btn-primary-wp w-100 py-2">Save Record</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="script.js"></script>
+</body>
+</html>
