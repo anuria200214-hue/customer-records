@@ -1,6 +1,18 @@
-/**
- * SYSTEM STATE & INITIALIZATION
- */
+// --- FIREBASE CONFIGURATION ---
+const firebaseConfig = {
+  apiKey: "AIzaSyBoP9Dxain9dj6sNvtWzG8YZ1wFTBSe6MQ",
+  authDomain: "service-records-d5ee6.firebaseapp.com",
+  projectId: "service-records-d5ee6",
+  storageBucket: "service-records-d5ee6.firebasestorage.app",
+  messagingSenderId: "724836577296", // Yeh change hona zaroori hai
+  appId: "1:724836577296:web:58c1a25b50aa7510e99a95",
+  measurementId: "G-ZGK7V0N2CB"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+// --- INITIALIZATION ---
 const urlParams = new URLSearchParams(window.location.search);
 const currentUnit = urlParams.get('id') || 'default_shop';
 const isPrivileged = (currentUnit === 'admin');
@@ -23,13 +35,10 @@ window.onload = function() {
     }
 };
 
-/**
- * AUTH & SECURITY LOGIC
- */
+// --- AUTH LOGIC ---
 function validateAccess() {
     const input = document.getElementById('accessKeyInput').value;
     const masterKey = localStorage.getItem('system_master_key') || '1234';
-    
     if (input === masterKey) {
         sessionStorage.setItem('admin_session', 'true');
         unlockAdminView();
@@ -44,50 +53,37 @@ function unlockAdminView() {
     document.getElementById('authOverlay').classList.add('hidden');
     document.getElementById('masterPanel').classList.remove('hidden');
     document.getElementById('serviceConfigSection').classList.add('hidden');
-    populateShopDropdown();
 }
 
-function terminateSession() {
-    sessionStorage.removeItem('admin_session');
-    window.location.reload();
-}
-
-function updateMasterKey() {
-    const n = prompt("Set New Admin Access Key:");
-    if(n) { localStorage.setItem('system_master_key', n.trim()); alert("Key Updated."); }
-}
-
-/**
- * DATA ENGINE
- */
-function populateShopDropdown() {
-    const selector = document.getElementById('unitSelector');
-    selector.innerHTML = '<option value="all">All Shop Units</option>';
-    Object.keys(localStorage).filter(k => k.startsWith('data_')).forEach(k => {
-        const unit = k.replace('data_', '');
-        if(unit !== 'admin') {
-            const opt = document.createElement('option');
-            opt.value = unit; opt.innerText = unit.toUpperCase();
-            selector.appendChild(opt);
-        }
-    });
-}
-
+// --- CLOUD DATA ENGINE ---
 function loadGlobalData() {
-    const target = isPrivileged ? document.getElementById('unitSelector').value : currentUnit;
+    const path = isPrivileged ? 'records' : `records/${currentUnit}`;
     
-    if (isPrivileged && target === 'all') {
+    // Cloud se data khinchna
+    db.ref(path).on('value', (snapshot) => {
+        const data = snapshot.val();
         applicationData = [];
-        Object.keys(localStorage).filter(k => k.startsWith('data_')).forEach(k => {
-            applicationData = applicationData.concat(JSON.parse(localStorage.getItem(k)) || []);
+        
+        if (isPrivileged) {
+            // Admin ke liye saari shops ka data merge karna
+            for (let shop in data) {
+                for (let id in data[shop]) {
+                    applicationData.push({ ...data[shop][id], id: id, unit: shop });
+                }
+            }
+        } else {
+            // Shop ke liye sirf apna data
+            for (let id in data) {
+                applicationData.push({ ...data[id], id: id, unit: currentUnit });
+            }
+        }
+        
+        // Services load karna (Cloud se)
+        db.ref(`services/${currentUnit}`).on('value', (svcSnap) => {
+            availableServices = svcSnap.val() || ['Pancard', 'Insurance'];
+            updateDashboardUI(isPrivileged ? 'ALL UNITS' : currentUnit);
         });
-        // Admin gets a combined list of services or defaults
-        availableServices = ['Pancard', 'Insurance']; 
-    } else {
-        applicationData = JSON.parse(localStorage.getItem(`data_${target}`)) || [];
-        availableServices = JSON.parse(localStorage.getItem(`services_${target}`)) || ['Pancard', 'Insurance'];
-    }
-    updateDashboardUI(target);
+    });
 }
 
 function updateDashboardUI(targetLabel) {
@@ -111,76 +107,56 @@ function updateDashboardUI(targetLabel) {
     initCharts(applicationData);
 }
 
-/**
- * RECORD ACTIONS
- */
+// --- RECORD ACTIONS (SAVE TO CLOUD) ---
 document.getElementById('submissionForm').addEventListener('submit', (e) => {
     e.preventDefault();
     const entry = {
-        id: "TXN_" + Date.now() + Math.random().toString(36).substr(2, 5),
-        unit: currentUnit,
         name: document.getElementById('entryName').value,
         phone: document.getElementById('entryPhone').value,
         date: document.getElementById('sysDate').value,
         time: document.getElementById('sysTime').value,
         type: document.getElementById('entryType').value,
-        amount: document.getElementById('entryAmount').value
+        amount: document.getElementById('entryAmount').value,
+        timestamp: Date.now()
     };
-    let db = JSON.parse(localStorage.getItem(`data_${currentUnit}`)) || [];
-    db.push(entry);
-    localStorage.setItem(`data_${currentUnit}`, JSON.stringify(db));
-    e.target.reset(); navigateTo('dashboard'); loadGlobalData();
+    
+    // Save to Firebase Cloud
+    db.ref(`records/${currentUnit}`).push(entry).then(() => {
+        e.target.reset();
+        navigateTo('dashboard');
+        alert("Success: Saved to Cloud!");
+    });
 });
 
 function removeEntry(id, sourceUnit) {
-    if(!confirm("Delete this record permanently?")) return;
-    const target = sourceUnit || currentUnit;
-    let db = JSON.parse(localStorage.getItem(`data_${target}`)) || [];
-    localStorage.setItem(`data_${target}`, JSON.stringify(db.filter(i => String(i.id) !== String(id))));
-    loadGlobalData();
+    if(!confirm("Delete this record from Cloud?")) return;
+    db.ref(`records/${sourceUnit}/${id}`).remove();
 }
 
+// --- SEARCH & SERVICES ---
 function executeSearch() {
     const val = document.getElementById('dataFilter').value.toLowerCase();
     const filtered = applicationData.filter(r => r.name.toLowerCase().includes(val) || r.phone.includes(val));
     renderTable(filtered);
 }
 
-/**
- * SERVICE CONFIG
- */
 function registerService() {
     const input = document.getElementById('serviceInput');
     const val = input.value.trim();
     if(val && !availableServices.includes(val)) {
         availableServices.push(val);
-        localStorage.setItem(`services_${currentUnit}`, JSON.stringify(availableServices));
-        input.value = ''; loadGlobalData();
+        db.ref(`services/${currentUnit}`).set(availableServices);
+        input.value = '';
     }
 }
 
 function deregisterService(s) {
-    if(!confirm(`Remove "${s}" category?`)) return;
-    availableServices = availableServices.filter(x => x !== s);
-    localStorage.setItem(`services_${currentUnit}`, JSON.stringify(availableServices));
-    loadGlobalData();
+    if(!confirm(`Remove "${s}"?`)) return;
+    const newSvcs = availableServices.filter(x => x !== s);
+    db.ref(`services/${currentUnit}`).set(newSvcs);
 }
 
-/**
- * UTILS & NAVIGATION
- */
-function navigateTo(view) {
-    document.getElementById('view-dashboard').classList.toggle('hidden', view !== 'dashboard');
-    document.getElementById('view-form').classList.toggle('hidden', view !== 'form');
-    document.getElementById('nav-dash').classList.toggle('active', view === 'dashboard');
-    document.getElementById('nav-form').classList.toggle('active', view === 'form');
-    if(view === 'form') {
-        const d = new Date();
-        document.getElementById('sysDate').value = d.toISOString().split('T')[0];
-        document.getElementById('sysTime').value = d.toTimeString().split(' ')[0].substring(0,5);
-    }
-}
-
+// --- TABLE & CHARTS (Aapka Purana Logic) ---
 function renderTable(data) {
     const body = document.getElementById('recordTableBody');
     body.innerHTML = '';
@@ -192,18 +168,12 @@ function renderTable(data) {
                 <td>${r.date} <span class="text-muted small">${r.time}</span></td>
                 <td><span class="badge bg-light text-dark border fw-normal">${r.type}</span></td>
                 <td class="fw-bold">₹${parseFloat(r.amount).toFixed(2)}</td>
-                <td><span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-2">Paid</span></td>
+                <td><span class="badge bg-success-subtle text-success rounded-pill px-2">Paid</span></td>
                 <td class="pe-3 text-end">
                     <i class="bi bi-trash3-fill text-danger cursor-pointer" onclick="removeEntry('${r.id}', '${r.unit}')"></i>
                 </td>
             </tr>`;
     });
-}
-
-function copyAccessLink() {
-    const url = window.location.origin + window.location.pathname + "?id=" + currentUnit;
-    navigator.clipboard.writeText(url);
-    alert("Shareable link copied!");
 }
 
 function initCharts(data) {
@@ -222,4 +192,16 @@ function initCharts(data) {
         data: { labels: Object.keys(stats), datasets: [{ data: Object.values(stats), backgroundColor: ['#2271b1', '#d63638', '#dba617', '#00a32a', '#72aee6'] }] },
         options: { maintainAspectRatio: false }
     });
+}
+
+// --- UTILS ---
+function navigateTo(view) {
+    document.getElementById('view-dashboard').classList.toggle('hidden', view !== 'dashboard');
+    document.getElementById('view-form').classList.toggle('hidden', view !== 'form');
+}
+
+function copyAccessLink() {
+    const url = window.location.origin + window.location.pathname + "?id=" + currentUnit;
+    navigator.clipboard.writeText(url);
+    alert("Shareable link copied!");
 }
