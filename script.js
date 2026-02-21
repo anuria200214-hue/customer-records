@@ -1,207 +1,269 @@
-// --- FIREBASE CONFIGURATION ---
 const firebaseConfig = {
-  apiKey: "AIzaSyBoP9Dxain9dj6sNvtWzG8YZ1wFTBSe6MQ",
-  authDomain: "service-records-d5ee6.firebaseapp.com",
-  projectId: "service-records-d5ee6",
-  storageBucket: "service-records-d5ee6.firebasestorage.app",
-  messagingSenderId: "724836577296", // Yeh change hona zaroori hai
-  appId: "1:724836577296:web:58c1a25b50aa7510e99a95",
-  measurementId: "G-ZGK7V0N2CB"
+    apiKey: "AIzaSyBoP9Dxain9dj6sNvtWzG8YZ1wFTBSe6MQ",
+    authDomain: "service-records-d5ee6.firebaseapp.com",
+    projectId: "service-records-d5ee6",
+    databaseURL: "https://service-records-d5ee6-default-rtdb.firebaseio.com"
 };
 
-firebase.initializeApp(firebaseConfig);
+if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-// --- INITIALIZATION ---
 const urlParams = new URLSearchParams(window.location.search);
-const currentUnit = urlParams.get('id') || 'default_shop';
-const isPrivileged = (currentUnit === 'admin');
+const userId = urlParams.get('id') || 'General';
+const isAdmin = userId === 'admin';
+const sessionKey = 'sys_admin_auth';
 
-let applicationData = [];
-let availableServices = [];
-let chartInstance1, chartInstance2;
+let bChart, pChart, currentFilter = 'all';
 
-window.onload = function() {
-    if (isPrivileged) {
-        if (sessionStorage.getItem('admin_session') === 'true') {
-            unlockAdminView();
-            loadGlobalData();
-        } else {
-            document.getElementById('authOverlay').classList.remove('hidden');
-        }
-    } else {
-        document.getElementById('serviceConfigSection').classList.remove('hidden');
-        loadGlobalData();
-    }
+window.onload = () => {
+    initContext();
+    syncServices();
+    if(isAdmin) syncShopControls();
 };
 
-// --- AUTH LOGIC ---
-function validateAccess() {
-    const input = document.getElementById('accessKeyInput').value;
-    const masterKey = localStorage.getItem('system_master_key') || '1234';
-    if (input === masterKey) {
-        sessionStorage.setItem('admin_session', 'true');
-        unlockAdminView();
-        loadGlobalData();
+// --- UPDATED SEPARATE CLOCK (NO SECONDS) ---
+function updateLiveDateTime() {
+    const now = new Date();
+    
+    // Date: DD/MM/YYYY
+    const dateStr = now.toLocaleDateString('en-IN', {
+        day: '2-digit', month: '2-digit', year: 'numeric'
+    });
+    
+    // Time: HH:MM AM/PM (Removed seconds)
+    const timeStr = now.toLocaleTimeString('en-IN', {
+        hour: '2-digit', minute: '2-digit', hour12: true
+    });
+
+    const dateField = document.getElementById('custDate');
+    const timeField = document.getElementById('custTime');
+    
+    if (dateField) dateField.value = dateStr;
+    if (timeField) timeField.value = timeStr;
+}
+
+document.getElementById('entryForm')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    
+    // Save the current branch name before resetting the form
+    const currentBranch = document.getElementById('displayShopId').value;
+
+    const recordData = {
+        shopId: userId,
+        customer: document.getElementById('custName').value,
+        phone: document.getElementById('custPhone').value,
+        service: document.getElementById('custService').value,
+        amount: document.getElementById('custAmount').value,
+        date: document.getElementById('custDate').value,
+        time: document.getElementById('custTime').value
+    };
+
+    db.ref('records').push(recordData).then(() => { 
+        // Show success alert
+        const alertBox = document.getElementById('success-alert');
+        if (alertBox) {
+            alertBox.classList.remove('d-none');
+            setTimeout(() => alertBox.classList.add('d-none'), 3000);
+        }
+
+        e.target.reset(); // This clears all fields
+        
+        // RE-APPLY the branch name so it doesn't disappear
+        document.getElementById('displayShopId').value = currentBranch;
+        
+        updateLiveDateTime(); // Refresh the date/time after reset
+    }).catch(err => alert("Error: " + err.message));
+});
+function initContext() {
+    const label = document.getElementById('sidebar-shop-label');
+    const display = document.getElementById('displayShopId');
+    
+    // Start the clock
+    updateLiveDateTime();
+    setInterval(updateLiveDateTime, 1000);
+
+    if (isAdmin) {
+        label.innerText = "ADMIN CONSOLE";
+
+    // THIS LINE ONLY RUNS FOR ADMIN
+        if(display) display.value = "MASTER ADMIN";
+
+        if (localStorage.getItem(sessionKey) !== 'true') {
+            document.getElementById('login-overlay').classList.remove('hidden');
+        } else {
+            document.querySelectorAll('.admin-only').forEach(e => e.classList.remove('hidden'));
+            initCharts();
+            syncDashboard('all');
+            navigateTo('dashboard');
+        }
     } else {
-        document.getElementById('authError').classList.remove('hidden');
-        setTimeout(() => document.getElementById('authError').classList.add('hidden'), 2000);
+        label.innerText = userId.toUpperCase();
+        if(display) display.value = userId;
+        db.ref('shops').once('value', snap => {
+            const list = Object.values(snap.val() || {});
+            if(!list.includes(userId)) db.ref('shops').push(userId);
+        });
+        navigateTo('form');
     }
 }
 
-function unlockAdminView() {
-    document.getElementById('authOverlay').classList.add('hidden');
-    document.getElementById('masterPanel').classList.remove('hidden');
-    document.getElementById('serviceConfigSection').classList.add('hidden');
-}
-
-// --- CLOUD DATA ENGINE ---
-function loadGlobalData() {
-    const path = isPrivileged ? 'records' : `records/${currentUnit}`;
-    
-    // Cloud se data khinchna
-    db.ref(path).on('value', (snapshot) => {
-        const data = snapshot.val();
-        applicationData = [];
+function syncShopControls() {
+    db.ref('shops').on('value', (snap) => {
+        const shops = snap.val() || {};
+        const dropdown = document.getElementById('masterShopDropdown');
+        if(!dropdown) return;
         
-        if (isPrivileged) {
-            // Admin ke liye saari shops ka data merge karna
-            for (let shop in data) {
-                for (let id in data[shop]) {
-                    applicationData.push({ ...data[shop][id], id: id, unit: shop });
-                }
-            }
-        } else {
-            // Shop ke liye sirf apna data
-            for (let id in data) {
-                applicationData.push({ ...data[id], id: id, unit: currentUnit });
-            }
-        }
-        
-        // Services load karna (Cloud se)
-        db.ref(`services/${currentUnit}`).on('value', (svcSnap) => {
-            availableServices = svcSnap.val() || ['Pancard', 'Insurance'];
-            updateDashboardUI(isPrivileged ? 'ALL UNITS' : currentUnit);
+        dropdown.innerHTML = '<option value="all">View All Records (Master)</option>';
+        Object.keys(shops).forEach(id => {
+            const name = shops[id];
+            dropdown.innerHTML += `<option value="${name}" ${currentFilter === name ? 'selected' : ''}>${name}</option>`;
         });
     });
 }
 
-function updateDashboardUI(targetLabel) {
-    document.getElementById('displayUnitID').innerText = targetLabel.toUpperCase();
-    document.getElementById('stat-count').innerText = applicationData.length;
-    
-    const rev = applicationData.reduce((s, r) => s + parseFloat(r.amount || 0), 0);
-    document.getElementById('stat-revenue').innerText = '₹' + rev.toLocaleString(undefined, {minimumFractionDigits: 2});
-    document.getElementById('stat-services').innerText = availableServices.length;
-
-    const registry = document.getElementById('serviceRegistry');
-    const typeSelect = document.getElementById('entryType');
-    if(registry && typeSelect) {
-        registry.innerHTML = ''; typeSelect.innerHTML = '';
-        availableServices.forEach(s => {
-            registry.innerHTML += `<span class="svc-tag">${s} <i class="bi bi-x-circle-fill" onclick="deregisterService('${s}')"></i></span>`;
-            typeSelect.innerHTML += `<option value="${s}">${s}</option>`;
-        });
-    }
-    renderTable(applicationData);
-    initCharts(applicationData);
+function filterBy(val) {
+    currentFilter = val;
+    syncDashboard(val);
 }
 
-// --- RECORD ACTIONS (SAVE TO CLOUD) ---
-document.getElementById('submissionForm').addEventListener('submit', (e) => {
+function syncDashboard(filter = 'all') {
+    db.ref('records').on('value', (snap) => {
+        const data = snap.val() || {};
+        let total = 0, count = 0, stats = {};
+        const table = document.getElementById('recordTableBody');
+        table.innerHTML = '';
+        
+        // Sort: Newest entries first
+        const entries = Object.entries(data).reverse();
+
+        entries.forEach(([id, entry]) => {
+            if (filter !== 'all' && entry.shopId !== filter) return;
+
+            count++;
+            total += parseFloat(entry.amount) || 0;
+            stats[entry.service] = (stats[entry.service] || 0) + 1;
+
+            // Data extraction with fallbacks
+            const unitDisplay = entry.shopId || 'N/A';
+            const phoneDisplay = entry.phone || '—';
+            const dateDisplay = entry.date || '—';
+            const timeDisplay = entry.time || '—';
+
+            table.innerHTML += `<tr>
+                <td class="ps-3"><span class="badge bg-dark">${unitDisplay}</span></td>
+                <td class="fw-bold">${entry.customer}</td>
+                <td class="text-muted">${phoneDisplay}</td>
+                <td>${entry.service}</td>
+                <td class="fw-bold">₹${entry.amount}</td>
+                <td>${dateDisplay}</td> <td class="text-muted">${timeDisplay}</td> <td class="pe-3 text-end">
+                    <i class="bi bi-trash text-danger" role="button" onclick="deleteRecord('${id}')"></i>
+                </td>
+            </tr>`;
+        });
+
+        // Update Stats
+        document.getElementById('stat-count').innerText = count;
+        document.getElementById('stat-revenue').innerText = `₹${total.toFixed(2)}`;
+        
+        if (bChart) updateVisuals(stats);
+    });
+}
+
+// --- INSTANT SEARCH FUNCTION ---
+function filterTableData() {
+    const input = document.getElementById("tableSearch").value.toLowerCase();
+    const rows = document.querySelectorAll("#recordTableBody tr");
+
+    rows.forEach(row => {
+        const rowText = row.innerText.toLowerCase();
+        row.style.display = rowText.includes(input) ? "" : "none";
+    });
+}
+
+document.getElementById('entryForm')?.addEventListener('submit', (e) => {
     e.preventDefault();
-    const entry = {
-        name: document.getElementById('entryName').value,
-        phone: document.getElementById('entryPhone').value,
-        date: document.getElementById('sysDate').value,
-        time: document.getElementById('sysTime').value,
-        type: document.getElementById('entryType').value,
-        amount: document.getElementById('entryAmount').value,
-        timestamp: Date.now()
-    };
-    
-    // Save to Firebase Cloud
-    db.ref(`records/${currentUnit}`).push(entry).then(() => {
-        e.target.reset();
-        navigateTo('dashboard');
-        alert("Success: Saved to Cloud!");
+    db.ref('records').push({
+        shopId: userId,
+        customer: document.getElementById('custName').value,
+        service: document.getElementById('custService').value,
+        amount: document.getElementById('custAmount').value,
+        date: document.getElementById('custDateTime').value // Saves the live time
+    }).then(() => { 
+        alert("Record Saved Successfully."); 
+        e.target.reset(); 
+        updateLiveDateTime(); 
     });
 });
 
-function removeEntry(id, sourceUnit) {
-    if(!confirm("Delete this record from Cloud?")) return;
-    db.ref(`records/${sourceUnit}/${id}`).remove();
+async function handleLogin() {
+    const input = document.getElementById('admin-pass-input').value;
+    const snap = await db.ref('admin_config/password').get();
+    if (input === (snap.val() || "1234")) {
+        localStorage.setItem(sessionKey, 'true');
+        location.reload();
+    } else document.getElementById('login-error').classList.remove('hidden');
 }
 
-// --- SEARCH & SERVICES ---
-function executeSearch() {
-    const val = document.getElementById('dataFilter').value.toLowerCase();
-    const filtered = applicationData.filter(r => r.name.toLowerCase().includes(val) || r.phone.includes(val));
-    renderTable(filtered);
+function syncServices() {
+    db.ref('services').on('value', snap => {
+        const svcs = snap.val() || {}, drop = document.getElementById('custService'), reg = document.getElementById('serviceRegistry');
+        drop.innerHTML = ''; if(reg) reg.innerHTML = '';
+        Object.keys(svcs).forEach(id => {
+            drop.innerHTML += `<option value="${svcs[id]}">${svcs[id]}</option>`;
+            if(reg) reg.innerHTML += `<span class="badge bg-light text-dark border me-1">${svcs[id]} <i class="bi bi-x text-danger" role="button" onclick="deleteService('${id}')"></i></span>`;
+        });
+        if(isAdmin) document.getElementById('stat-services').innerText = Object.keys(svcs).length;
+    });
 }
 
 function registerService() {
-    const input = document.getElementById('serviceInput');
-    const val = input.value.trim();
-    if(val && !availableServices.includes(val)) {
-        availableServices.push(val);
-        db.ref(`services/${currentUnit}`).set(availableServices);
-        input.value = '';
-    }
+    const val = document.getElementById('serviceInput').value.trim();
+    if (val) db.ref('services').push(val).then(() => document.getElementById('serviceInput').value = '');
 }
-
-function deregisterService(s) {
-    if(!confirm(`Remove "${s}"?`)) return;
-    const newSvcs = availableServices.filter(x => x !== s);
-    db.ref(`services/${currentUnit}`).set(newSvcs);
+function deleteRecord(id) { if(confirm("Delete record?")) db.ref('records').child(id).remove(); }
+function deleteService(id) { if(confirm("Remove?")) db.ref('services').child(id).remove(); }
+function updatePassword() {
+    const p = document.getElementById('new-pass').value;
+    if(p.length > 3) db.ref('admin_config').update({password:p}).then(()=>alert("Success"));
 }
+function terminateSession() { localStorage.removeItem(sessionKey); window.location.href = window.location.pathname; }
 
-// --- TABLE & CHARTS (Aapka Purana Logic) ---
-function renderTable(data) {
-    const body = document.getElementById('recordTableBody');
-    body.innerHTML = '';
-    [...data].reverse().forEach(r => {
-        body.innerHTML += `
-            <tr class="align-middle">
-                <td class="ps-3 py-2 fw-bold text-primary">${r.name}</td>
-                <td class="text-muted">${r.phone}</td>
-                <td>${r.date} <span class="text-muted small">${r.time}</span></td>
-                <td><span class="badge bg-light text-dark border fw-normal">${r.type}</span></td>
-                <td class="fw-bold">₹${parseFloat(r.amount).toFixed(2)}</td>
-                <td><span class="badge bg-success-subtle text-success rounded-pill px-2">Paid</span></td>
-                <td class="pe-3 text-end">
-                    <i class="bi bi-trash3-fill text-danger cursor-pointer" onclick="removeEntry('${r.id}', '${r.unit}')"></i>
-                </td>
-            </tr>`;
+function navigateTo(v) {
+    ['dashboard', 'form', 'settings'].forEach(id => {
+        const el = document.getElementById(`view-${id}`);
+        if(el) el.classList.toggle('hidden', id !== v);
+    });
+    const navs = {'dashboard': 'nav-dash', 'form': 'nav-form', 'settings': 'nav-settings'};
+    Object.keys(navs).forEach(k => {
+        const el = document.getElementById(navs[k]);
+        if(el) el.classList.toggle('active', k === v);
     });
 }
 
-function initCharts(data) {
-    if(chartInstance1) chartInstance1.destroy(); if(chartInstance2) chartInstance2.destroy();
-    if(data.length === 0) return;
-    const stats = {};
-    data.forEach(r => stats[r.type] = (stats[r.type] || 0) + 1);
-    
-    chartInstance1 = new Chart(document.getElementById('revenueChart'), {
-        type: 'bar',
-        data: { labels: Object.keys(stats), datasets: [{ label: 'Transactions', data: Object.values(stats), backgroundColor: '#2271b1' }] },
-        options: { maintainAspectRatio: false }
-    });
-    chartInstance2 = new Chart(document.getElementById('distributionChart'), {
-        type: 'pie',
-        data: { labels: Object.keys(stats), datasets: [{ data: Object.values(stats), backgroundColor: ['#2271b1', '#d63638', '#dba617', '#00a32a', '#72aee6'] }] },
-        options: { maintainAspectRatio: false }
-    });
+function initCharts() {
+    const o = { maintainAspectRatio: false, plugins: { legend: { display: false } } };
+    bChart = new Chart(document.getElementById('barChart'), { type: 'bar', data: { labels: [], datasets: [{ data: [], backgroundColor: '#2271b1' }] }, options: o });
+    pChart = new Chart(document.getElementById('pieChart'), { type: 'pie', data: { labels: [], datasets: [{ data: [], backgroundColor: ['#2271b1', '#d63638', '#ffb900', '#46b450'] }] }, options: { maintainAspectRatio: false } });
 }
 
-// --- UTILS ---
-function navigateTo(view) {
-    document.getElementById('view-dashboard').classList.toggle('hidden', view !== 'dashboard');
-    document.getElementById('view-form').classList.toggle('hidden', view !== 'form');
+function updateVisuals(stats) {
+    const l = Object.keys(stats), v = Object.values(stats);
+    bChart.data.labels = l; bChart.data.datasets[0].data = v; bChart.update();
+    pChart.data.labels = l; pChart.data.datasets[0].data = v; pChart.update();
 }
 
-function copyAccessLink() {
-    const url = window.location.origin + window.location.pathname + "?id=" + currentUnit;
-    navigator.clipboard.writeText(url);
-    alert("Shareable link copied!");
+function filterTableData() {
+    const input = document.getElementById("tableSearch").value.toLowerCase();
+    const rows = document.querySelectorAll("#recordTableBody tr");
+
+    rows.forEach(row => {
+        // This grabs all text inside the row (Name, Number, Date, Time, Service, Amount)
+        const rowText = row.innerText.toLowerCase();
+        
+        if (rowText.includes(input)) {
+            row.style.display = ""; // Show row
+        } else {
+            row.style.display = "none"; // Hide row
+        }
+    });
 }
