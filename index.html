@@ -9,7 +9,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root { --sidebar-bg: #1d2327; --app-bg: #f0f0f1; --accent-blue: #2271b1; }
-        body { background-color: var(--app-bg); font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; display: flex; margin: 0; }
+        body { background-color: var(--app-bg); font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; display: flex; margin: 0; min-height: 100vh; }
         #sidebar { width: 220px; background: var(--sidebar-bg); min-height: 100vh; color: #c3c4c7; display: flex; flex-direction: column; position: sticky; top: 0; }
         .side-item { padding: 12px 20px; cursor: pointer; font-size: 14px; color: #c3c4c7; display: flex; align-items: center; border-left: 4px solid transparent; }
         .side-item:hover, .side-item.active { background: #2c3338; color: white; border-left-color: var(--accent-blue); }
@@ -18,19 +18,13 @@
         .stat-value { font-size: 26px; font-weight: bold; color: #1d2327; }
         .hidden { display: none !important; }
         .chart-container { height: 250px; position: relative; }
-        #login-overlay { z-index: 10000; background: rgba(30,30,30,0.96); }
+        #login-overlay { z-index: 10000; background: rgba(30,30,30,0.96); position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+        .follow-up-due { background-color: #fffdf0 !important; border-left: 4px solid #ffb900 !important; }
+        .insurance-due { background-color: #fff5f5 !important; border-left: 4px solid #d63638 !important; }
+        #denied-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: white; z-index: 99999; display: flex; flex-direction: column; align-items: center; justify-content: center; color: red; }
     </style>
 </head>
 <body>
-
-<div id="login-overlay" class="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center hidden">
-    <div class="wp-card shadow-lg" style="width: 340px;">
-        <h5 class="text-center mb-4">Master Admin</h5>
-        <input type="password" id="admin-pass-input" class="form-control mb-3" placeholder="Access Token">
-        <button class="btn btn-primary w-100" onclick="handleLogin()">Authorize</button>
-        <p id="login-error" class="text-danger small mt-2 text-center hidden">Access Denied</p>
-    </div>
-</div>
 
 <nav id="sidebar">
     <div class="p-3 fw-bold border-bottom border-secondary mb-2" style="font-size: 11px; color: #72777c; letter-spacing: 1px;">TERMINAL</div>
@@ -42,134 +36,77 @@
 </nav>
 
 <main id="main-content">
+    <div id="login-overlay" class="hidden">
+        <div class="wp-card shadow-lg" style="width: 340px;">
+            <h5 class="text-center mb-4">Master Admin Access</h5>
+            <input type="password" id="admin-pass-input" class="form-control mb-3" placeholder="Access Token">
+            <button class="btn btn-primary w-100" onclick="handleLogin()">Authorize</button>
+            <p id="login-error" class="text-danger small mt-2 text-center hidden">Access Denied</p>
+        </div>
+    </div>
+
     <section id="view-dashboard" class="hidden">
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h4 class="m-0">Records Overview</h4>
-            <div class="d-flex align-items-center gap-2">
-                <label class="small fw-bold text-muted mb-0">SELECT SHOP:</label>
-                <select id="masterShopDropdown" class="form-select form-select-sm shadow-none border-primary" style="width: 220px;" onchange="filterBy(this.value)">
-                    <option value="all">View All Records (Master)</option>
-                </select>
-            </div>
+            <select id="masterShopDropdown" class="form-select form-select-sm" style="width: 220px;" onchange="filterBy(this.value)">
+                <option value="all">All Shops</option>
+            </select>
         </div>
-
         <div class="row g-3 mb-4 text-center">
             <div class="col-md-4"><div class="wp-card small text-muted">RECORDS<div class="stat-value" id="stat-count">0</div></div></div>
             <div class="col-md-4"><div class="wp-card small text-muted">REVENUE<div class="stat-value" id="stat-revenue">₹0.00</div></div></div>
             <div class="col-md-4"><div class="wp-card small text-muted">SERVICES<div class="stat-value" id="stat-services">0</div></div></div>
         </div>
-
         <div class="row mb-4">
             <div class="col-md-7"><div class="wp-card"><h6>Volume Trends</h6><div class="chart-container"><canvas id="barChart"></canvas></div></div></div>
             <div class="col-md-5"><div class="wp-card"><h6>Distribution</h6><div class="chart-container"><canvas id="pieChart"></canvas></div></div></div>
         </div>
-
         <div class="wp-card mb-3 p-2">
-    <div class="input-group">
-        <span class="input-group-text bg-white border-end-0 text-muted">
-            <i class="bi bi-search"></i>
-        </span>
-        <input type="text" id="tableSearch" class="form-control border-start-0 shadow-none" 
-               placeholder="Search by Name, Phone, Date, Service, or Amount..." 
-               onkeyup="filterTableData()">
-    </div>
-</div>
-
+            <input type="text" id="tableSearch" class="form-control" placeholder="Search records..." onkeyup="filterTableData()">
+        </div>
         <div class="wp-card">
-    <div class="table-responsive">
-        <table class="table table-sm table-hover align-middle" style="font-size: 13px;">
-            <thead class="table-light">
-                <tr>
-                    <th class="ps-3">Unit</th>
-                    <th>Customer</th>
-                    <th>Contact</th>
-                    <th>Service</th>
-                    <th>Amount</th>
-                    <th>Date</th>
-                    <th>Time</th>
-                    <th class="pe-3 text-end">Action</th>
-                </tr>
-            </thead>
-            <tbody id="recordTableBody"></tbody>
-        </table>
-    </div>
-</div>
-
-        
+            <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle" style="font-size: 13px;">
+                    <thead class="table-light">
+                        <tr><th>Unit</th><th>Customer</th><th>Contact</th><th>Service</th><th>Amount</th><th>Date</th><th>Time</th><th class="text-end">Action</th></tr>
+                    </thead>
+                    <tbody id="recordTableBody"></tbody>
+                </table>
+            </div>
+        </div>
     </section>
 
     <section id="view-form">
-    <div class="row justify-content-center pt-5">
-        <div class="col-md-5">
-            <div class="wp-card shadow-sm border-top border-primary border-4">
-                <h5 class="mb-4 fw-bold">New Entry</h5>
-                <form id="entryForm">
-                    <div class="mb-3">
-                        <label class="small fw-bold text-muted">Branch</label>
-                        <input type="text" id="displayShopId" class="form-control bg-light border-0" readonly>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-6 mb-3">
-                            <label class="small fw-bold text-muted">Date</label>
-                            <input type="text" id="custDate" class="form-control bg-light border-0" readonly>
+        <div class="row justify-content-center pt-5">
+            <div class="col-md-5">
+                <div class="wp-card shadow-sm border-top border-primary border-4">
+                    <h5 class="mb-4 fw-bold">New Entry</h5>
+                    <form id="entryForm">
+                        <div class="mb-3"><label class="small fw-bold">Branch</label><input type="text" id="displayShopId" class="form-control bg-light border-0" readonly></div>
+                        <div class="row">
+                            <div class="col-6 mb-3"><label class="small fw-bold">Date</label><input type="text" id="custDate" class="form-control bg-light border-0" readonly></div>
+                            <div class="col-6 mb-3"><label class="small fw-bold">Time</label><input type="text" id="custTime" class="form-control bg-light border-0" readonly></div>
                         </div>
-                        <div class="col-6 mb-3">
-                            <label class="small fw-bold text-muted">Time</label>
-                            <input type="text" id="custTime" class="form-control bg-light border-0" readonly>
-                        </div>
-                    </div>
-
-                    <div class="mb-3">
-    <label class="small fw-bold">Client Name</label>
-    <input type="text" id="custName" class="form-control shadow-none" placeholder="Enter name" required>
-</div>
-
-  <div class="mb-3">
-    <label class="small fw-bold">Phone Number</label>
-    <input type="tel" id="custPhone" class="form-control shadow-none" pattern="[0-9]{10}" title="Please enter a 10-digit phone number">
-</div>
-
-                    <div class="mb-3">
-                        <label class="small fw-bold">Service Category</label>
-                        <select id="custService" class="form-select shadow-none"></select>
-                    </div>
-
-                    <div class="mb-4">
-                        <label class="small fw-bold">Amount (₹)</label>
-                        <input type="number" id="custAmount" class="form-control shadow-none" placeholder="0.00" step="0.01" required>
-                    </div>
-
-                    <button type="submit" class="btn btn-primary w-100 py-2 fw-bold">Record Saved</button>
-                    <div id="success-alert" class="alert alert-success d-none py-2 mb-3 shadow-sm" style="font-size: 14px;">
-    <i class="bi bi-check-circle-fill me-2"></i>  Recorded Successfully!
-</div>
-                </form>
+                        <div class="mb-3"><label class="small fw-bold">Client Name</label><input type="text" id="custName" class="form-control" required></div>
+                        <div class="mb-3"><label class="small fw-bold">Phone Number</label><input type="tel" id="custPhone" class="form-control" pattern="[0-9]{10}"></div>
+                        <div class="mb-3"><label class="small fw-bold">Service Category</label><select id="custService" class="form-select"></select></div>
+                        <div class="mb-4"><label class="small fw-bold">Amount (₹)</label><input type="number" id="custAmount" class="form-control" step="0.01" required></div>
+                        <button type="submit" class="btn btn-primary w-100 py-2 fw-bold">Save Record</button>
+                        <div id="success-alert" class="alert alert-success d-none mt-3 py-2">Recorded Successfully!</div>
+                    </form>
+                </div>
             </div>
         </div>
-    </div>
-</section>
+    </section>
 
     <section id="view-settings" class="hidden">
         <div class="wp-card mb-4">
-            <h6>Master Configuration</h6>
-            <div class="row g-3">
-                <div class="col-md-6">
-                    <label class="small fw-bold">New Service Type</label>
-                    <div class="d-flex gap-2 mb-2">
-                        <input type="text" id="serviceInput" class="form-control form-control-sm" placeholder="e.g. Design">
-                        <button class="btn btn-sm btn-primary" onclick="registerService()">Add</button>
-                    </div>
-                    <div id="serviceRegistry"></div>
-                </div>
-                <div class="col-md-6">
-                    <label class="small fw-bold">Security Token</label>
-                    <div class="d-flex gap-2">
-                        <input type="password" id="new-pass" class="form-control form-control-sm" placeholder="New Password">
-                        <button class="btn btn-sm btn-success" onclick="updatePassword()">Update</button>
-                    </div>
-                </div>
+            <h6>Service Management</h6>
+            <div class="d-flex gap-2 mb-3">
+                <input type="text" id="serviceInput" class="form-control form-control-sm" placeholder="Add Service Name">
+                <button class="btn btn-sm btn-primary" onclick="registerService()">Add</button>
             </div>
+            <div id="serviceRegistry"></div>
         </div>
     </section>
 </main>
