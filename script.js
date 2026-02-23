@@ -114,19 +114,31 @@ function syncDashboard(filter = 'all') {
                 }
 
                 let highlightClass = "", statusBadge = "";
-                if (entry.date) {
-                    const [d, m, y] = entry.date.split('/');
-                    const recordDate = new Date(y, m - 1, d);
-                    const diffDays = Math.floor(Math.abs(now - recordDate) / (1000 * 60 * 60 * 24));
-                    const isIns = entry.service.toLowerCase().includes('insurance');
-                    if (isIns && diffDays >= 334) {
-                        highlightClass = "insurance-due";
-                        statusBadge = `<span class="badge-reminder bg-insurance">Renewal Due</span>`;
-                    } else if (!isIns && diffDays >= 30) {
-                        highlightClass = "follow-up-due";
-                        statusBadge = `<span class="badge-reminder bg-followup">Follow-up</span>`;
-                    }
-                }
+                // ... existing code inside entries.forEach ...
+
+if (entry.date && entry.time) {
+    // Combine date (DD/MM/YYYY) and time (HH:MM AM/PM) into a parsable string
+    const [d, m, y] = entry.date.split('/');
+    const dateTimeString = `${y}-${m}-${d} ${entry.time}`;
+    const recordDateTime = new Date(dateTimeString);
+    
+    // Calculate difference in Minutes
+    const diffMs = Math.abs(now - recordDateTime);
+    const diffMinutes = Math.floor(diffMs / (1000 * 60)); 
+
+    const isIns = entry.service.toLowerCase().includes('insurance');
+
+    // TEST LOGIC: 15 mins for Insurance, 5 mins for others
+    if (isIns && diffMinutes >= 15) {
+        highlightClass = "insurance-due";
+        statusBadge = `<span class="badge-reminder bg-insurance">Renewal Due (15m+)</span>`;
+    } else if (!isIns && diffMinutes >= 5) {
+        highlightClass = "follow-up-due";
+        statusBadge = `<span class="badge-reminder bg-followup">Follow-up (5m+)</span>`;
+    }
+}
+
+// ... rest of the table row generation ...
 
                 const displayDate = entry.date ? entry.date.split(',')[0] : 'N/A';
                 const displayTime = entry.time || '--';
@@ -196,7 +208,8 @@ function navigateTo(v) {
 
 function syncShopControls() {
     const dropdown = document.getElementById('masterShopDropdown');
-    dropdown.innerHTML = '<option value="all">All Shop Records</option>';
+    dropdown.innerHTML = '<option value="all">All Shop
+     Records</option>';
     allowedShops.forEach(shop => dropdown.innerHTML += `<option value="${shop}">${shop}</option>`);
 }
 
