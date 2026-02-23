@@ -52,6 +52,10 @@ function initContext() {
             initCharts();
             syncDashboard('all');
             navigateTo('dashboard');
+
+            setInterval(() => {
+                syncDashboard(currentFilter);
+            }, 30000);
         }
     } else {
         label.innerText = userId.toUpperCase();
@@ -114,32 +118,33 @@ function syncDashboard(filter = 'all') {
                 }
 
                 let highlightClass = "", statusBadge = "";
-                // ... existing code inside entries.forEach ...
-
+                // --- STRICT MINUTES LOGIC START ---
 if (entry.date && entry.time) {
-    // Combine date (DD/MM/YYYY) and time (HH:MM AM/PM) into a parsable string
     const [d, m, y] = entry.date.split('/');
-    const dateTimeString = `${y}-${m}-${d} ${entry.time}`;
-    const recordDateTime = new Date(dateTimeString);
+    const formattedDate = `${y}-${m}-${d}`;
+    const recordDateTime = new Date(`${formattedDate} ${entry.time}`);
+    const now = new Date();
     
-    // Calculate difference in Minutes
-    const diffMs = Math.abs(now - recordDateTime);
-    const diffMinutes = Math.floor(diffMs / (1000 * 60)); 
+    const diffMs = now - recordDateTime;
+    const diffMinutes = Math.floor(diffMs / (1000 * 60));
 
     const isIns = entry.service.toLowerCase().includes('insurance');
 
-    // TEST LOGIC: 15 mins for Insurance, 5 mins for others
-    if (isIns && diffMinutes >= 15) {
-        highlightClass = "insurance-due";
-        statusBadge = `<span class="badge-reminder bg-insurance">Renewal Due (15m+)</span>`;
-    } else if (!isIns && diffMinutes >= 5) {
-        highlightClass = "follow-up-due";
-        statusBadge = `<span class="badge-reminder bg-followup">Follow-up (5m+)</span>`;
+    if (isIns) {
+        // Sirf 15 minute hone par hi show karega
+        if (diffMinutes >= 15) {
+            highlightClass = "insurance-due";
+            statusBadge = `<span class="badge-reminder bg-insurance">Renewal Due</span>`;
+        }
+    } else {
+        // Sirf 5 minute hone par hi show karega
+        if (diffMinutes >= 5) {
+            highlightClass = "follow-up-due";
+            statusBadge = `<span class="badge-reminder bg-followup">Follow-up</span>`;
+        }
     }
 }
-
-// ... rest of the table row generation ...
-
+// --- STRICT MINUTES LOGIC END ---
                 const displayDate = entry.date ? entry.date.split(',')[0] : 'N/A';
                 const displayTime = entry.time || '--';
 
@@ -161,6 +166,7 @@ if (entry.date && entry.time) {
         });
     });
 }
+
 
 function syncServices() {
     db.ref('services').on('value', snap => {
@@ -208,8 +214,7 @@ function navigateTo(v) {
 
 function syncShopControls() {
     const dropdown = document.getElementById('masterShopDropdown');
-    dropdown.innerHTML = '<option value="all">All Shop
-     Records</option>';
+    dropdown.innerHTML = '<option value="all">All Shop Records</option>';
     allowedShops.forEach(shop => dropdown.innerHTML += `<option value="${shop}">${shop}</option>`);
 }
 
