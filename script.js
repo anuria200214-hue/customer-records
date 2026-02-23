@@ -14,18 +14,15 @@ const allowedShops = ['shop0.1', 'shop0.2', 'shop0.3', 'shop0.4', 'shop0.5'];
 const isAdmin = userId === 'admin';
 const sessionKey = 'sys_admin_auth';
 
-// --- HARD SECURITY ---
-if (!isAdmin && !allowedShops.includes(userId)) {
-    document.body.innerHTML = '<div id="denied-overlay"><h1>403 - ACCESS DENIED</h1><p>Terminal Unauthorized</p></div>';
-}
-
 let bChart, pChart, currentFilter = 'all';
 
 window.onload = () => {
-    if (!document.getElementById('denied-overlay')) {
+    if (isAdmin || allowedShops.includes(userId)) {
         initContext();
         syncServices();
         if(isAdmin) syncShopControls();
+    } else {
+        document.body.innerHTML = `<div id="denied-overlay"><h1>403 - ACCESS DENIED</h1></div>`;
     }
 };
 
@@ -39,13 +36,15 @@ function updateLiveDateTime() {
 
 function initContext() {
     const label = document.getElementById('sidebar-shop-label');
-    const display = document.getElementById('displayShopId');
+    const branchDisplay = document.getElementById('displayShopId'); // Form field reference
     updateLiveDateTime();
     setInterval(updateLiveDateTime, 1000);
 
     if (isAdmin) {
         label.innerText = "ADMIN CONSOLE";
-        if(display) display.value = "MASTER ADMIN";
+        // Fix: Admin hone par field mein text set karein
+        if(branchDisplay) branchDisplay.value = "MASTER ADMIN"; 
+        
         if (localStorage.getItem(sessionKey) !== 'true') {
             document.getElementById('login-overlay').classList.remove('hidden');
         } else {
@@ -56,15 +55,13 @@ function initContext() {
         }
     } else {
         label.innerText = userId.toUpperCase();
-        if(display) display.value = userId;
+        // Shop user hone par Shop ID set karein
+        if(branchDisplay) branchDisplay.value = userId; 
         navigateTo('form');
     }
 }
-
 async function handleLogin() {
-    const input = document.getElementById('admin-pass-input').value;
-    // Default password is set to 'admin'
-    if (input === "admin") {
+    if (document.getElementById('admin-pass-input').value === "admin") {
         localStorage.setItem(sessionKey, 'true');
         location.reload();
     } else {
@@ -74,7 +71,6 @@ async function handleLogin() {
 
 document.getElementById('entryForm')?.addEventListener('submit', (e) => {
     e.preventDefault();
-    const currentBranch = document.getElementById('displayShopId').value;
     const recordData = {
         shopId: userId,
         customer: document.getElementById('custName').value,
@@ -84,96 +80,86 @@ document.getElementById('entryForm')?.addEventListener('submit', (e) => {
         date: document.getElementById('custDate').value,
         time: document.getElementById('custTime').value
     };
-
     db.ref('records').push(recordData).then(() => {
-        const alertBox = document.getElementById('success-alert');
-        alertBox.classList.remove('d-none');
-        setTimeout(() => alertBox.classList.add('d-none'), 3000);
+        document.getElementById('success-alert').classList.remove('d-none');
+        setTimeout(() => document.getElementById('success-alert').classList.add('d-none'), 3000);
         e.target.reset();
-        document.getElementById('displayShopId').value = currentBranch;
+        document.getElementById('displayShopId').value = isAdmin ? "MASTER ADMIN" : userId;
         updateLiveDateTime();
     });
 });
 
 function syncDashboard(filter = 'all') {
-    db.ref('records').on('value', (snap) => {
-        const data = snap.val() || {};
-        const table = document.getElementById('recordTableBody');
-        let total = 0, count = 0, stats = {};
-        table.innerHTML = '';
-        const now = new Date();
-        const entries = Object.entries(data).reverse();
+    // 1. Pehle Active Services ki list fetch karein
+    db.ref('services').once('value', (svcSnap) => {
+        const activeServices = Object.values(svcSnap.val() || {});
 
-        entries.forEach(([id, entry]) => {
-            if (filter !== 'all' && entry.shopId !== filter) return;
-            count++; total += parseFloat(entry.amount) || 0;
-            stats[entry.service] = (stats[entry.service] || 0) + 1;
+        // 2. Phir Records listen karein
+        db.ref('records').on('value', (snap) => {
+            const data = snap.val() || {};
+            const table = document.getElementById('recordTableBody');
+            let total = 0, count = 0, stats = {};
+            table.innerHTML = '';
+            const now = new Date();
+            const entries = Object.entries(data).reverse();
 
-            let highlightClass = "";
-            if (entry.date) {
-                const [d, m, y] = entry.date.split('/');
-                const rDate = new Date(y, m - 1, d);
-                const diffDays = Math.ceil(Math.abs(now - rDate) / (1000 * 60 * 60 * 24));
-                const isIns = entry.service.toLowerCase().includes('insurance');
-                if (isIns && diffDays >= 330) highlightClass = "insurance-due";
-                else if (!isIns && diffDays >= 30) highlightClass = "follow-up-due";
-            }
+            entries.forEach(([id, entry]) => {
+                if (filter !== 'all' && entry.shopId !== filter) return;
+                count++; 
+                total += parseFloat(entry.amount) || 0;
+                
+                // LOGIC: Sirf wahi service chart mein jayegi jo Active List mein hai
+                if (activeServices.includes(entry.service)) {
+                    stats[entry.service] = (stats[entry.service] || 0) + 1;
+                }
 
-            table.innerHTML += `<tr class="${highlightClass}">
-                <td class="ps-3"><span class="badge bg-dark">${entry.shopId}</span></td>
-                <td class="fw-bold">${entry.customer}</td>
-                <td>${entry.phone}</td>
-                <td>${entry.service}</td>
-                <td class="fw-bold">₹${entry.amount}</td>
-                <td>${entry.date}</td>
-                <td class="text-muted">${entry.time}</td>
-                <td class="pe-3 text-end"><i class="bi bi-trash text-danger" role="button" onclick="deleteRecord('${id}')"></i></td>
-            </tr>`;
+                let highlightClass = "", statusBadge = "";
+                if (entry.date) {
+                    const [d, m, y] = entry.date.split('/');
+                    const recordDate = new Date(y, m - 1, d);
+                    const diffDays = Math.floor(Math.abs(now - recordDate) / (1000 * 60 * 60 * 24));
+                    const isIns = entry.service.toLowerCase().includes('insurance');
+                    if (isIns && diffDays >= 334) {
+                        highlightClass = "insurance-due";
+                        statusBadge = `<span class="badge-reminder bg-insurance">Renewal Due</span>`;
+                    } else if (!isIns && diffDays >= 30) {
+                        highlightClass = "follow-up-due";
+                        statusBadge = `<span class="badge-reminder bg-followup">Follow-up</span>`;
+                    }
+                }
+
+                const displayDate = entry.date ? entry.date.split(',')[0] : 'N/A';
+                const displayTime = entry.time || '--';
+
+                table.innerHTML += `<tr class="${highlightClass}">
+                    <td class="ps-3"><span class="badge bg-dark">${entry.shopId}</span></td>
+                    <td class="fw-bold">${entry.customer}</td>
+                    <td class="text-muted">${entry.phone}</td>
+                    <td><div style="display:flex;align-items:center;gap:8px;"><span>${entry.service}</span>${statusBadge}</div></td>
+                    <td class="fw-bold text-primary">₹${entry.amount}</td>
+                    <td>${displayDate}</td>
+                    <td>${displayTime}</td>
+                    <td class="pe-3 text-end"><i class="bi bi-trash text-danger" role="button" onclick="deleteRecord('${id}')"></i></td>
+                </tr>`;
+            });
+
+            document.getElementById('stat-count').innerText = count;
+            document.getElementById('stat-revenue').innerText = `₹${total.toLocaleString('en-IN')}`;
+            if (typeof bChart !== 'undefined') updateVisuals(stats);
         });
-        document.getElementById('stat-count').innerText = count;
-        document.getElementById('stat-revenue').innerText = `₹${total.toFixed(2)}`;
-        if (bChart) updateVisuals(stats);
     });
 }
 
 function syncServices() {
     db.ref('services').on('value', snap => {
         const svcs = snap.val() || {}, drop = document.getElementById('custService'), reg = document.getElementById('serviceRegistry');
-        drop.innerHTML = ''; if(reg) reg.innerHTML = '';
+        if(drop) drop.innerHTML = ''; if(reg) reg.innerHTML = '';
         Object.keys(svcs).forEach(id => {
-            drop.innerHTML += `<option value="${svcs[id]}">${svcs[id]}</option>`;
-            if(reg) reg.innerHTML += `<span class="badge bg-light text-dark border me-1">${svcs[id]} <i class="bi bi-x text-danger" role="button" onclick="deleteService('${id}')"></i></span>`;
+            if(drop) drop.innerHTML += `<option value="${svcs[id]}">${svcs[id]}</option>`;
+            if(reg) reg.innerHTML += `<span class="badge bg-white text-dark border p-2">${svcs[id]} <i class="bi bi-x text-danger ms-2" role="button" onclick="deleteService('${id}')"></i></span>`;
         });
         if(isAdmin) document.getElementById('stat-services').innerText = Object.keys(svcs).length;
     });
-}
-
-function filterTableData() {
-    const input = document.getElementById("tableSearch").value.toLowerCase();
-    document.querySelectorAll("#recordTableBody tr").forEach(row => {
-        row.style.display = row.innerText.toLowerCase().includes(input) ? "" : "none";
-    });
-}
-
-function registerService() {
-    const val = document.getElementById('serviceInput').value.trim();
-    if (val) db.ref('services').push(val).then(() => document.getElementById('serviceInput').value = '');
-}
-
-function syncShopControls() {
-    db.ref('shops').on('value', snap => {
-        const dropdown = document.getElementById('masterShopDropdown');
-        dropdown.innerHTML = '<option value="all">All Shops</option>';
-        Object.values(snap.val() || {}).forEach(name => {
-            dropdown.innerHTML += `<option value="${name}">${name}</option>`;
-        });
-    });
-}
-
-function navigateTo(v) {
-    ['dashboard', 'form', 'settings'].forEach(id => document.getElementById(`view-${id}`)?.classList.toggle('hidden', id !== v));
-    const navs = {'dashboard': 'nav-dash', 'form': 'nav-form', 'settings': 'nav-settings'};
-    Object.keys(navs).forEach(k => document.getElementById(navs[k])?.classList.toggle('active', k === v));
 }
 
 function initCharts() {
@@ -188,7 +174,37 @@ function updateVisuals(stats) {
     pChart.data.labels = l; pChart.data.datasets[0].data = v; pChart.update();
 }
 
-function deleteRecord(id) { if(confirm("Delete record?")) db.ref('records').child(id).remove(); }
-function deleteService(id) { if(confirm("Remove?")) db.ref('services').child(id).remove(); }
+function registerService() {
+    const val = document.getElementById('serviceInput').value.trim();
+    if (val) db.ref('services').push(val).then(() => {
+        document.getElementById('serviceInput').value = '';
+        if(isAdmin) syncDashboard(currentFilter); // Refresh dashboard charts
+    });
+}
+
+function deleteService(id) {
+    if(confirm("Remove category? Visual Dashboard will update immediately.")) {
+        db.ref('services').child(id).remove().then(() => syncDashboard(currentFilter));
+    }
+}
+
+function navigateTo(v) {
+    ['dashboard', 'form', 'settings'].forEach(id => document.getElementById(`view-${id}`)?.classList.toggle('hidden', id !== v));
+    const navs = {'dashboard': 'nav-dash', 'form': 'nav-form', 'settings': 'nav-settings'};
+    Object.keys(navs).forEach(k => document.getElementById(navs[k])?.classList.toggle('active', k === v));
+}
+
+function syncShopControls() {
+    const dropdown = document.getElementById('masterShopDropdown');
+    dropdown.innerHTML = '<option value="all">All Shop Records</option>';
+    allowedShops.forEach(shop => dropdown.innerHTML += `<option value="${shop}">${shop}</option>`);
+}
+
+function filterTableData() {
+    const input = document.getElementById("tableSearch").value.toLowerCase();
+    document.querySelectorAll("#recordTableBody tr").forEach(row => row.style.display = row.innerText.toLowerCase().includes(input) ? "" : "none");
+}
+
+function deleteRecord(id) { if(confirm("Delete?")) db.ref('records').child(id).remove(); }
 function terminateSession() { localStorage.removeItem(sessionKey); location.reload(); }
 function filterBy(val) { currentFilter = val; syncDashboard(val); }
