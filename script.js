@@ -14,7 +14,8 @@ const allowedShops = ['shop0.1', 'shop0.2', 'shop0.3', 'shop0.4', 'shop0.5'];
 const isAdmin = userId === 'admin';
 const sessionKey = 'sys_admin_auth';
 
-let bChart, pChart, currentFilter = 'all';
+/*let bChart, pChart, currentFilter = 'all';*/
+let bChart, pChart, currentFilter = 'all', currentTimeFilter = 'all';
 
 window.onload = () => {
     if (isAdmin || allowedShops.includes(userId)) {
@@ -39,6 +40,11 @@ function initContext() {
     const branchDisplay = document.getElementById('displayShopId'); // Form field reference
     updateLiveDateTime();
     setInterval(updateLiveDateTime, 1000);
+
+    // Initialize charge fields to 0
+    if(document.getElementById('serviceCharge')) document.getElementById('serviceCharge').value = 0;
+    if(document.getElementById('adminCharge')) document.getElementById('adminCharge').value = 0;
+    if(document.getElementById('custAmount')) document.getElementById('custAmount').value = 0;
 
     if (isAdmin) {
         label.innerText = "ADMIN CONSOLE";
@@ -80,6 +86,9 @@ document.getElementById('entryForm')?.addEventListener('submit', (e) => {
         customer: document.getElementById('custName').value,
         phone: document.getElementById('custPhone').value,
         service: document.getElementById('custService').value,
+        payment: document.querySelector('input[name="payMethod"]:checked').value,
+        serviceCharge: document.getElementById('serviceCharge').value,
+       adminCharge: document.getElementById('adminCharge').value,
         amount: document.getElementById('custAmount').value,
         date: document.getElementById('custDate').value,
         time: document.getElementById('custTime').value
@@ -88,6 +97,9 @@ document.getElementById('entryForm')?.addEventListener('submit', (e) => {
         document.getElementById('success-alert').classList.remove('d-none');
         setTimeout(() => document.getElementById('success-alert').classList.add('d-none'), 3000);
         e.target.reset();
+        document.getElementById('serviceCharge').value = 0; // Ensure reset to 0
+        document.getElementById('adminCharge').value = 0;  // Ensure reset to 0
+        document.getElementById('custAmount').value = 0;   // Ensure reset to 0  
         document.getElementById('displayShopId').value = isAdmin ? "MASTER ADMIN" : userId;
         updateLiveDateTime();
     });
@@ -109,6 +121,10 @@ function syncDashboard(filter = 'all') {
 
             entries.forEach(([id, entry]) => {
                 if (filter !== 'all' && entry.shopId !== filter) return;
+
+                // --- INSERT THE LINE BELOW ---
+    if (!isWithinRange(entry.date, currentTimeFilter)) return; 
+    // ---
                 count++; 
                 total += parseFloat(entry.amount) || 0;
                 
@@ -148,12 +164,21 @@ if (entry.date && entry.time) {
                 const displayDate = entry.date ? entry.date.split(',')[0] : 'N/A';
                 const displayTime = entry.time || '--';
 
+                const pType = entry.payment || 'Cash';
+                const pBadgeClass = pType === 'Online' ? 'bg-info text-dark' : 'bg-secondary text-white';
+
                 table.innerHTML += `<tr class="${highlightClass}">
                     <td class="ps-3"><span class="badge bg-dark">${entry.shopId}</span></td>
                     <td class="fw-bold">${entry.customer}</td>
                     <td class="text-muted">${entry.phone}</td>
                     <td><div style="display:flex;align-items:center;gap:8px;"><span>${entry.service}</span>${statusBadge}</div></td>
-                    <td class="fw-bold text-primary">₹${entry.amount}</td>
+                    <td><span class="badge ${pBadgeClass}" style="font-size: 10px;">${pType.toUpperCase()}</span></td>
+                    <td class="fw-bold text-primary">
+                     ₹${entry.amount}
+                  <div style="font-size: 10px; color: #72777c; font-weight: normal;">
+                      (S:₹${entry.serviceCharge || 0} + A:₹${entry.adminCharge || 0})
+                 </div>
+                 </td>
                     <td>${displayDate}</td>
                     <td>${displayTime}</td>
                     <td class="pe-3 text-end"><i class="bi bi-trash text-danger" role="button" onclick="deleteRecord('${id}')"></i></td>
@@ -163,6 +188,8 @@ if (entry.date && entry.time) {
             document.getElementById('stat-count').innerText = count;
             document.getElementById('stat-revenue').innerText = `₹${total.toLocaleString('en-IN')}`;
             if (typeof bChart !== 'undefined') updateVisuals(stats);
+
+            switchTab(currentTab);
         });
     });
 }
@@ -226,3 +253,85 @@ function filterTableData() {
 function deleteRecord(id) { if(confirm("Delete?")) db.ref('records').child(id).remove(); }
 function terminateSession() { localStorage.removeItem(sessionKey); location.reload(); }
 function filterBy(val) { currentFilter = val; syncDashboard(val); }
+
+// Add these at the very end of your script.js
+function setTimeFilter(range, btn) {
+    currentTimeFilter = range;
+    btn.parentElement.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    syncDashboard(currentFilter); // Re-run the sync with the new time filter
+}
+
+function isWithinRange(dateStr, range) {
+    if (range === 'all' || !dateStr) return true;
+    
+    const [d, m, y] = dateStr.split('/');
+    const recordDate = new Date(y, m - 1, d);
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+
+    if (range === 'daily') {
+        return recordDate.getTime() === now.getTime();
+    }
+    
+    if (range === 'weekly') {
+        const weekAgo = new Date();
+        weekAgo.setDate(now.getDate() - 7);
+        return recordDate >= weekAgo && recordDate <= now;
+    }
+    
+    if (range === 'monthly') {
+        const monthAgo = new Date();
+        monthAgo.setMonth(now.getMonth() - 1);
+        return recordDate >= monthAgo && recordDate <= now;
+    }
+    return false;
+}
+
+function calculateTotal() {
+    const service = parseFloat(document.getElementById('serviceCharge').value) || 0;
+    const admin = parseFloat(document.getElementById('adminCharge').value) || 0;
+    document.getElementById('custAmount').value = service + admin;
+}
+
+let currentTab = 'all';
+
+function switchTab(type) {
+    currentTab = type;
+
+    // 1. Button ka color change karein
+    document.querySelectorAll('#recordTabs .nav-link').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    // Button ID fix: tab-follow-up ko tab-followup se match karne ke liye
+    const activeBtnId = `tab-${type.replace('-', '')}`;
+    if(document.getElementById(activeBtnId)) {
+        document.getElementById(activeBtnId).classList.add('active');
+    }
+
+    // 2. Table rows filter karein aur counts nikalein
+    const rows = document.querySelectorAll("#recordTableBody tr");
+    let fCount = 0, rCount = 0;
+
+    rows.forEach(row => {
+        const isRenewal = row.classList.contains('insurance-due');
+        const isFollowUp = row.classList.contains('follow-up-due');
+
+        // Counts update karein
+        if (isFollowUp) fCount++;
+        if (isRenewal) rCount++;
+
+        // Visibility logic
+        if (type === 'all') {
+            row.style.display = ""; 
+        } else if (type === 'renewal') {
+            row.style.display = isRenewal ? "" : "none";
+        } else if (type === 'follow-up') {
+            row.style.display = isFollowUp ? "" : "none";
+        }
+    });
+
+    // 3. Badges mein number set karein
+    if(document.getElementById('count-followup')) document.getElementById('count-followup').innerText = fCount;
+    if(document.getElementById('count-renewal')) document.getElementById('count-renewal').innerText = rCount;
+}

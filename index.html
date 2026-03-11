@@ -31,6 +31,74 @@
 
         #login-overlay { z-index: 10000; background: rgba(30,30,30,0.96); position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
         #denied-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: white; z-index: 99999; display: flex; flex-direction: column; align-items: center; justify-content: center; color: red; text-align: center; }
+
+      /* Modern Filter Tabs Styling */
+#recordTabs {
+    background: #f8f9fa;
+    padding: 10px;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    display: flex;
+    gap: 12px;
+}
+
+#recordTabs .nav-link {
+    border: none;
+    border-radius: 8px;
+    padding: 8px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    color: #64748b;
+    background: white;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+/* Hover Effect */
+#recordTabs .nav-link:hover {
+    background: #f1f5f9;
+    transform: translateY(-1px);
+}
+
+/* Active State (ALL) */
+#recordTabs #tab-all.active {
+    background-color: #2271b1 !important;
+    color: white !important;
+    box-shadow: 0 4px 6px -1px rgba(34, 113, 177, 0.2);
+}
+
+/* Follow-up Tab Professional Style */
+#recordTabs #tab-followup {
+    color: #854d0e;
+    border-bottom: 2px solid transparent;
+}
+#recordTabs #tab-followup.active {
+    background-color: #fefce8 !important;
+    border: 1px solid #eab308 !important;
+    color: #854d0e !important;
+    box-shadow: 0 4px 6px -1px rgba(234, 179, 8, 0.1);
+}
+
+/* Renewable Tab Professional Style */
+#recordTabs #tab-renewal {
+    color: #991b1b;
+}
+#recordTabs #tab-renewal.active {
+    background-color: #fef2f2 !important;
+    border: 1px solid #ef4444 !important;
+    color: #991b1b !important;
+    box-shadow: 0 4px 6px -1px rgba(239, 68, 68, 0.1);
+}
+
+/* Badge Styling inside buttons */
+.badge-count {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 20px;
+    margin-left: 8px;
+    font-weight: 700;
+}
+
     </style>
 </head>
 <body>
@@ -55,13 +123,21 @@
     </div>
 
     <section id="view-dashboard" class="hidden">
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <h4 class="m-0">Customer Records</h4>
-            <select id="masterShopDropdown" class="form-select form-select-sm" style="width: 220px;" onchange="filterBy(this.value)">
-                <option value="all">All Shop Records</option>
-            </select>
+       <div class="d-flex justify-content-between align-items-center mb-4">
+    <h4 class="m-0">Customer Records</h4>
+    <div class="d-flex gap-2">
+        <div class="btn-group btn-group-sm">
+            <button type="button" class="btn btn-outline-primary active" onclick="setTimeFilter('all', this)">All</button>
+            <button type="button" class="btn btn-outline-primary" onclick="setTimeFilter('daily', this)">Daily</button>
+            <button type="button" class="btn btn-outline-primary" onclick="setTimeFilter('weekly', this)">Weekly</button>
+            <button type="button" class="btn btn-outline-primary" onclick="setTimeFilter('monthly', this)">Monthly</button>
         </div>
-        
+        <select id="masterShopDropdown" class="form-select form-select-sm" style="width: 180px;" onchange="filterBy(this.value)">
+            <option value="all">All Shop Records</option>
+        </select>
+    </div>
+</div>
+
         <div class="row g-3 mb-4 text-center">
             <div class="col-md-4"><div class="wp-card small text-muted">TOTAL RECORDS<div class="stat-value" id="stat-count">0</div></div></div>
             <div class="col-md-4"><div class="wp-card small text-muted">NET REVENUE<div class="stat-value" id="stat-revenue">₹0.00</div></div></div>
@@ -74,11 +150,23 @@
         </div>
 
         <div class="wp-card mb-3 p-2"><input type="text" id="tableSearch" class="form-control border-0 shadow-none" placeholder="Search..." onkeyup="filterTableData()"></div>
+        <div class="nav nav-pills" id="recordTabs">
+                <button class="nav-link btn-sm fw-bold active me-2" id="tab-all" onclick="switchTab('all')">
+                    ALL
+                </button>
+                <button class="nav-link btn-sm fw-bold me-2 text-warning border-warning" id="tab-followup" onclick="switchTab('follow-up')">
+                    FOLLOW-UP <span class="badge bg-warning text-dark ms-1" id="count-followup">0</span>
+                </button>
+                <button class="nav-link btn-sm fw-bold text-danger border-danger" id="tab-renewal" onclick="switchTab('renewal')">
+                    RENEWABLE <span class="badge bg-danger ms-1" id="count-renewal">0</span>
+                </button>
+            </div>
+        </div>
         <div class="wp-card">
             <div class="table-responsive">
                 <table class="table table-sm table-hover align-middle" style="font-size: 13px;">
                     <thead class="table-light">
-                        <tr><th>Unit</th><th>Customer</th><th>Contact</th><th>Service Type</th><th>Amount</th><th>Date</th><th>Time</th><th class="text-end">Actions</th></tr>
+                        <tr><th>Unit</th><th>Customer</th><th>Contact</th><th>Service Type</th><th>Payment</th><th>Amount</th><th>Date</th><th>Time</th><th class="text-end">Actions</th></tr>
                     </thead>
                     <tbody id="recordTableBody"></tbody>
                 </table>
@@ -100,7 +188,36 @@
                         <div class="mb-3"><label class="small fw-bold">Customer Name</label><input type="text" id="custName" class="form-control" required></div>
                         <div class="mb-3"><label class="small fw-bold">Phone</label><input type="tel" id="custPhone" class="form-control" pattern="[0-9]{10}"></div>
                         <div class="mb-3"><label class="small fw-bold">Service</label><select id="custService" class="form-select"></select></div>
-                        <div class="mb-4"><label class="small fw-bold">Amount (₹)</label><input type="number" id="custAmount" class="form-control" required></div>
+                            <div class="mb-3">
+    <label class="small fw-bold d-block mb-2">Payment Type</label>
+    <div class="d-flex gap-3">
+        <div class="form-check">
+            <input class="form-check-input" type="radio" name="payMethod" id="payCash" value="Cash" checked>
+            <label class="form-check-label small" for="payCash">Cash</label>
+        </div>
+        <div class="form-check">
+            <input class="form-check-input" type="radio" name="payMethod" id="payOnline" value="Online">
+            <label class="form-check-label small" for="payOnline">Online</label>
+        </div>
+    </div>
+</div>
+
+    <div class="row">
+    <div class="col-6 mb-3">
+        <label class="small fw-bold">Service Charge (₹)</label>
+        <input type="number" id="serviceCharge" class="form-control" value="0" oninput="calculateTotal()">
+    </div>
+    
+    <div class="col-6 mb-3">
+        <label class="small fw-bold">Admin Charge (₹)</label>
+        <input type="number" id="adminCharge" class="form-control" value="0" oninput="calculateTotal()">
+    </div>
+</div>
+
+<div class="mb-4">
+    <label class="small fw-bold">Total Amount (₹)</label>
+    <input type="number" id="custAmount" class="form-control bg-light fw-bold text-primary" readonly value="0">
+</div>
                         <button type="submit" class="btn btn-primary w-100 py-2 fw-bold">SAVE RECORD</button>
                         <div id="success-alert" class="alert alert-success d-none mt-3 py-2 text-center">Record Saved!</div>
                     </form>
