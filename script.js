@@ -16,6 +16,7 @@ const sessionKey = 'sys_admin_auth';
 
 /*let bChart, pChart, currentFilter = 'all';*/
 let bChart, pChart, currentFilter = 'all', currentTimeFilter = 'all';
+let manualRange = { from: null, to: null };
 
 window.onload = () => {
     if (isAdmin || allowedShops.includes(userId)) {
@@ -133,31 +134,27 @@ function syncDashboard(filter = 'all') {
                     stats[entry.service] = (stats[entry.service] || 0) + 1;
                 }
 
-                let highlightClass = "", statusBadge = "";
-                // --- STRICT MINUTES LOGIC START ---
+                 // --- NAYA TAG LOGIC (Line 107 ke baad replace karein) ---
+const isFollowupDone = entry.followupDone || false;
+const isRenewalDone = entry.renewalDone || false;
+
+let highlightClass = "", statusBadge = "";
+const isIns = entry.service.toLowerCase().includes('insurance');
+
 if (entry.date && entry.time) {
     const [d, m, y] = entry.date.split('/');
-    const formattedDate = `${y}-${m}-${d}`;
-    const recordDateTime = new Date(`${formattedDate} ${entry.time}`);
-    const now = new Date();
-    
-    const diffMs = now - recordDateTime;
-    const diffMinutes = Math.floor(diffMs / (1000 * 60));
+    const recordDateTime = new Date(`${y}-${m}-${d} ${entry.time}`);
+    const diffMinutes = Math.floor((new Date() - recordDateTime) / 60000);
 
-    const isIns = entry.service.toLowerCase().includes('insurance');
-
-    if (isIns) {
-        // Sirf 15 minute hone par hi show karega
-        if (diffMinutes >= 15) {
-            highlightClass = "insurance-due";
-            statusBadge = `<span class="badge-reminder bg-insurance">Renewal Due</span>`;
-        }
-    } else {
-        // Sirf 5 minute hone par hi show karega
-        if (diffMinutes >= 5) {
-            highlightClass = "follow-up-due";
-            statusBadge = `<span class="badge-reminder bg-followup">Follow-up</span>`;
-        }
+    // Follow-up Tag with "X"
+    if (!isIns && !isFollowupDone && diffMinutes >= 5) {
+        highlightClass = "follow-up-due";
+        statusBadge = `<span class="badge-reminder bg-followup">Follow-up <i class="bi bi-x-circle ms-1" role="button" onclick="updateTag('${id}', 'followupDone', true)" style="color:red"></i></span>`;
+    } 
+    // Renewal Tag with "X"
+    else if (isIns && !isRenewalDone && diffMinutes >= 15) {
+        highlightClass = "insurance-due";
+        statusBadge = `<span class="badge-reminder bg-insurance">Renewal Due <i class="bi bi-x-circle ms-1 text-white" role="button" onclick="updateTag('${id}', 'renewalDone', true)"></i></span>`;
     }
 }
 // --- STRICT MINUTES LOGIC END ---
@@ -257,6 +254,12 @@ function filterBy(val) { currentFilter = val; syncDashboard(val); }
 // Add these at the very end of your script.js
 function setTimeFilter(range, btn) {
     currentTimeFilter = range;
+
+    // Clear manual inputs if a preset is clicked
+    document.getElementById('manualDateFrom').value = '';
+    document.getElementById('manualDateTo').value = '';
+    manualRange = { from: null, to: null };
+
     btn.parentElement.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     syncDashboard(currentFilter); // Re-run the sync with the new time filter
@@ -267,8 +270,36 @@ function isWithinRange(dateStr, range) {
     
     const [d, m, y] = dateStr.split('/');
     const recordDate = new Date(y, m - 1, d);
+    recordDate.setHours(0, 0, 0, 0);
+
     const now = new Date();
     now.setHours(0, 0, 0, 0);
+   
+    //Manual Range Logic
+    /*if (range === 'manual') {
+        if (!manualRange.from || !manualRange.to) return true;
+        const fromDate = new Date(manualRange.from).setHours(0, 0, 0, 0);
+        const toDate = new Date(manualRange.to).setHours(0, 0, 0, 0);
+        return recordDate >= fromDate && recordDate <= toDate;
+    }*/
+
+    // --- MANUAL RANGE & SINGLE DATE LOGIC ---
+    if (range === 'manual') {
+        if (!manualRange.from) return true;
+
+        const fromDate = new Date(manualRange.from);
+        fromDate.setHours(0, 0, 0, 0);
+
+        if (!manualRange.to) {
+            // SINGLE DATE MODE: Agar dusri date nahi hai, toh exact match karein
+            return recordDate.getTime() === fromDate.getTime();
+        } else {
+            // RANGE/MONTH MODE: Agar dono hain, toh beech ka data dikhayein
+            const toDate = new Date(manualRange.to);
+            toDate.setHours(0, 0, 0, 0);
+            return recordDate >= fromDate && recordDate <= toDate;
+        }
+    }
 
     if (range === 'daily') {
         return recordDate.getTime() === now.getTime();
@@ -277,12 +308,15 @@ function isWithinRange(dateStr, range) {
     if (range === 'weekly') {
         const weekAgo = new Date();
         weekAgo.setDate(now.getDate() - 7);
+        weekAgo.setHours(0, 0, 0, 0);
         return recordDate >= weekAgo && recordDate <= now;
     }
     
     if (range === 'monthly') {
         const monthAgo = new Date();
-        monthAgo.setMonth(now.getMonth() - 1);
+        monthAgo.setDate(now.getDate() - 30); // 30 days balance sheet
+        monthAgo.setHours(0, 0, 0, 0);
+        /*monthAgo.setMonth(now.getMonth() - 1);*/
         return recordDate >= monthAgo && recordDate <= now;
     }
     return false;
@@ -314,24 +348,59 @@ function switchTab(type) {
     let fCount = 0, rCount = 0;
 
     rows.forEach(row => {
-        const isRenewal = row.classList.contains('insurance-due');
-        const isFollowUp = row.classList.contains('follow-up-due');
+        // Logic: Check if the actual colored badges are visible in the row
+        const hasFollowupBadge = row.querySelector('.bg-followup') !== null;
+        const hasRenewalBadge = row.querySelector('.bg-insurance') !== null;
 
-        // Counts update karein
-        if (isFollowUp) fCount++;
-        if (isRenewal) rCount++;
+       // Update counts for the badges at the top
+        if (hasFollowupBadge) fCount++;
+        if (hasRenewalBadge) rCount++;
 
-        // Visibility logic
+        // Visibility Logic
         if (type === 'all') {
             row.style.display = ""; 
         } else if (type === 'renewal') {
-            row.style.display = isRenewal ? "" : "none";
+            // Show only if the "Renewal" badge is present
+            row.style.display = hasRenewalBadge ? "" : "none";
         } else if (type === 'follow-up') {
-            row.style.display = isFollowUp ? "" : "none";
+            // Show only if the "Follow-up" badge is present
+            row.style.display = hasFollowupBadge ? "" : "none";
         }
     });
 
-    // 3. Badges mein number set karein
+    // 3. Badges mein number set 
     if(document.getElementById('count-followup')) document.getElementById('count-followup').innerText = fCount;
     if(document.getElementById('count-renewal')) document.getElementById('count-renewal').innerText = rCount;
+}
+
+function applyManualFilter() {
+    const fromVal = document.getElementById('manualDateFrom').value;
+    const toVal = document.getElementById('manualDateTo').value;
+
+    /*if (fromVal && toVal) {
+        manualRange = { 
+            from: new Date(fromVal), 
+            to: new Date(toVal) 
+        };
+        currentTimeFilter = 'manual'; // Switch mode to manual*/
+
+        if (fromVal) {
+        manualRange = { 
+            from: fromVal, // String pass kar rahe hain simple handling ke liye
+            to: toVal ? toVal : null 
+        };
+        currentTimeFilter = 'manual';
+        
+        /*document.querySelectorAll('.btn-group .btn').forEach(b => b.classList.remove('active'));*/
+        
+        syncDashboard(currentFilter); // Refresh data
+    }
+}
+
+function updateTag(recordId, field, status) {
+    db.ref('records').child(recordId).update({
+        [field]: status
+    }).then(() => {
+        console.log("Tag cut successfully!");
+    });
 }
