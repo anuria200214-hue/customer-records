@@ -164,7 +164,7 @@ if (entry.date && entry.time) {
                 const pType = entry.payment || 'Cash';
                 const pBadgeClass = pType === 'Online' ? 'bg-info text-dark' : 'bg-secondary text-white';
 
-                table.innerHTML += `<tr class="${highlightClass}">
+                /*table.innerHTML += `<tr class="${highlightClass}" data-hidden="${entry.hiddenFromTabs || false}">
                     <td class="ps-3"><span class="badge bg-dark">${entry.shopId}</span></td>
                     <td class="fw-bold">${entry.customer}</td>
                     <td class="text-muted">${entry.phone}</td>
@@ -180,7 +180,35 @@ if (entry.date && entry.time) {
                     <td>${displayTime}</td>
                     <td class="pe-3 text-end"><i class="bi bi-trash text-danger" role="button" onclick="deleteRecord('${id}')"></i></td>
                 </tr>`;
-            });
+            });*/
+
+     table.innerHTML += `<tr class="${highlightClass}" data-hidden="${entry.hiddenFromTabs || false}">
+    <td class="ps-3"><span class="badge bg-dark">${entry.shopId}</span></td>
+    <td class="fw-bold">${entry.customer}</td>
+    <td class="text-muted">${entry.phone}</td>
+    <td><div style="display:flex;align-items:center;gap:8px;"><span>${entry.service}</span>${statusBadge}</div></td>
+    <td><span class="badge ${pBadgeClass}" style="font-size: 10px;">${pType.toUpperCase()}</span></td>
+    <td class="fw-bold text-primary">
+        ₹${entry.amount}
+        <div style="font-size: 10px; color: #72777c; font-weight: normal;">
+            (S:₹${entry.serviceCharge || 0} + A:₹${entry.adminCharge || 0})
+        </div>
+    </td>
+    <td>${displayDate}</td>
+    <td>${displayTime}</td>
+     <td class="pe-3 text-end">
+        <div class="dropdown d-inline-block">
+            <i class="bi bi-plus-circle text-primary me-3" role="button" data-bs-toggle="dropdown" style="font-size: 1.1rem;"></i>
+            <ul class="dropdown-menu shadow border-0" style="font-size: 12px;">
+                <li><a class="dropdown-item" href="javascript:void(0)" onclick="updateTag('${id}', 'followupDone', false)">+ Add Follow-up</a></li>
+                <li><a class="dropdown-item" href="javascript:void(0)" onclick="updateTag('${id}', 'renewalDone', false)">+ Add Renewable</a></li>
+            </ul>
+
+            <i class="bi bi-trash text-danger" role="button" onclick="softDelete('${id}')"></i>
+        </div>
+    </td>
+</tr>`;
+ });
 
             document.getElementById('stat-count').innerText = count;
             document.getElementById('stat-revenue').innerText = `₹${total.toLocaleString('en-IN')}`;
@@ -328,47 +356,80 @@ function calculateTotal() {
     document.getElementById('custAmount').value = service + admin;
 }
 
-let currentTab = 'all';
-
-function switchTab(type) {
+/*function switchTab(type) {
     currentTab = type;
-
-    // 1. Button ka color change karein
-    document.querySelectorAll('#recordTabs .nav-link').forEach(btn => {
-        btn.classList.remove('active');
-    });
-    // Button ID fix: tab-follow-up ko tab-followup se match karne ke liye
-    const activeBtnId = `tab-${type.replace('-', '')}`;
-    if(document.getElementById(activeBtnId)) {
-        document.getElementById(activeBtnId).classList.add('active');
-    }
-
-    // 2. Table rows filter karein aur counts nikalein
     const rows = document.querySelectorAll("#recordTableBody tr");
     let fCount = 0, rCount = 0;
 
     rows.forEach(row => {
-        // Logic: Check if the actual colored badges are visible in the row
-        const hasFollowupBadge = row.querySelector('.bg-followup') !== null;
-        const hasRenewalBadge = row.querySelector('.bg-insurance') !== null;
+        // We look for the data-attributes we'll add to the <tr> (see step 4)
+        const isHidden = row.getAttribute('data-hidden') === 'true';
+        const hasFollowup = row.querySelector('.bg-followup') !== null;
+        const hasRenewal = row.querySelector('.bg-insurance') !== null;
 
-       // Update counts for the badges at the top
-        if (hasFollowupBadge) fCount++;
-        if (hasRenewalBadge) rCount++;
+        if (hasFollowup && !isHidden) fCount++;
+        if (hasRenewal && !isHidden) rCount++;
 
-        // Visibility Logic
         if (type === 'all') {
-            row.style.display = ""; 
-        } else if (type === 'renewal') {
-            // Show only if the "Renewal" badge is present
-            row.style.display = hasRenewalBadge ? "" : "none";
-        } else if (type === 'follow-up') {
-            // Show only if the "Follow-up" badge is present
-            row.style.display = hasFollowupBadge ? "" : "none";
+            row.style.display = ""; // Always show in ALL tab
+        } else {
+            // Hide if admin "soft deleted" it OR if it doesn't match the tab
+            if (isHidden) {
+                row.style.display = "none";
+            } else if (type === 'renewal') {
+                row.style.display = hasRenewal ? "" : "none";
+            } else if (type === 'follow-up') {
+                row.style.display = hasFollowup ? "" : "none";
+            }
         }
     });
 
-    // 3. Badges mein number set 
+    if(document.getElementById('count-followup')) document.getElementById('count-followup').innerText = fCount;
+    if(document.getElementById('count-renewal')) document.getElementById('count-renewal').innerText = rCount;
+}
+*/
+let currentTab = 'all';
+function switchTab(type) {
+    currentTab = type;
+
+  
+
+    // Remove 'active' class from all buttons
+    document.querySelectorAll('#recordTabs .nav-link').forEach(btn => {
+        btn.classList.remove('active');
+    });
+
+    // Add 'active' class to the current clicked button
+    if (type === 'all') document.getElementById('tab-all').classList.add('active');
+    if (type === 'follow-up') document.getElementById('tab-followup').classList.add('active');
+    if (type === 'renewal') document.getElementById('tab-renewal').classList.add('active');
+
+    const rows = document.querySelectorAll("#recordTableBody tr");
+    let fCount = 0, rCount = 0;
+
+    rows.forEach(row => {
+        const isHidden = row.getAttribute('data-hidden') === 'true';
+        // Hum ab check karenge ki record "Insurance" hai ya normal service
+        const serviceText = row.cells[3].innerText.toLowerCase();
+        const isIns = serviceText.includes('insurance');
+
+        // Counts update karein (sirf unka jo hide nahi kiye gaye)
+        if (!isIns && !isHidden) fCount++;
+        if (isIns && !isHidden) rCount++;
+
+        if (type === 'all') {
+            row.style.display = ""; // ALL tab mein sab dikhega
+        } else {
+            if (isHidden) {
+                row.style.display = "none"; // Agar admin ne delete (hide) kiya hai
+            } else if (type === 'renewal') {
+                row.style.display = isIns ? "" : "none";
+            } else if (type === 'follow-up') {
+                row.style.display = !isIns ? "" : "none";
+            }
+        }
+    });
+
     if(document.getElementById('count-followup')) document.getElementById('count-followup').innerText = fCount;
     if(document.getElementById('count-renewal')) document.getElementById('count-renewal').innerText = rCount;
 }
@@ -397,10 +458,24 @@ function applyManualFilter() {
     }
 }
 
+// 2. Modified updateTag to also clear the 'hiddenFromTabs' flag if adding a tag back
+function softDelete(recordId) {
+    if(confirm("Hide from this tab? Record stays in 'ALL'.")) {
+        db.ref('records').child(recordId).update({
+            hiddenFromTabs: true
+        });
+        // Firebase listener will auto-trigger syncDashboard
+    }
+}
+
 function updateTag(recordId, field, status) {
-    db.ref('records').child(recordId).update({
-        [field]: status
-    }).then(() => {
-        console.log("Tag cut successfully!");
-    });
+    let updates = {};
+    updates[field] = status;
+    
+    // If status is false, it means we are ADDING the tag back
+    if (status === false) {
+        updates['hiddenFromTabs'] = false;
+    }
+
+    db.ref('records').child(recordId).update(updates);
 }

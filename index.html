@@ -27,78 +27,52 @@
             line-height: 1; vertical-align: middle;
         }
         .bg-followup { background-color: #fff8e1; color: #8a6d3b; border: 1px solid #ffb900; }
-        .bg-insurance { background-color: #fbe9e7; color: #c62828; border: 1px solid #d63638; }
+        /* Renewal badge text and icon color fix */
+.bg-insurance { 
+    background-color: #fbe9e7; 
+    color: #c62828; 
+    border: 1px solid #d63638; 
+}
+
+/* Specific icon color for better visibility */
+.bg-insurance .bi-x-circle {
+    color: #c62828 !important; /* Dark Red icon for visibility */
+    transition: transform 0.2s;
+}
+
+.bg-insurance .bi-x-circle:hover {
+    color: #8e1b1b !important; /* Thoda aur dark on hover */
+    transform: scale(1.2);
+}
 
         #login-overlay { z-index: 10000; background: rgba(30,30,30,0.96); position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
         #denied-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: white; z-index: 99999; display: flex; flex-direction: column; align-items: center; justify-content: center; color: red; text-align: center; }
 
-      /* Modern Filter Tabs Styling */
-#recordTabs {
-    background: #f8f9fa;
-    padding: 10px;
-    border-radius: 12px;
-    border: 1px solid #e2e8f0;
-    display: flex;
-    gap: 12px;
-}
-
+      /* Base styling for all tabs */
 #recordTabs .nav-link {
-    border: none;
-    border-radius: 8px;
-    padding: 8px 16px;
-    font-size: 13px;
-    font-weight: 600;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border: 1px solid #e2e8f0;
     color: #64748b;
     background: white;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    font-weight: 600;
 }
 
-/* Hover Effect */
-#recordTabs .nav-link:hover {
-    background: #f1f5f9;
-    transform: translateY(-1px);
-}
-
-/* Active State (ALL) */
+/* ALL Tab - Blue when active */
 #recordTabs #tab-all.active {
     background-color: #2271b1 !important;
     color: white !important;
-    box-shadow: 0 4px 6px -1px rgba(34, 113, 177, 0.2);
 }
 
-/* Follow-up Tab Professional Style */
-#recordTabs #tab-followup {
-    color: #854d0e;
-    border-bottom: 2px solid transparent;
-}
+/* FOLLOW-UP Tab - Yellow when active */
 #recordTabs #tab-followup.active {
-    background-color: #fefce8 !important;
-    border: 1px solid #eab308 !important;
-    color: #854d0e !important;
-    box-shadow: 0 4px 6px -1px rgba(234, 179, 8, 0.1);
+    background-color: #ffb900 !important;
+    color: #000 !important;
 }
 
-/* Renewable Tab Professional Style */
-#recordTabs #tab-renewal {
-    color: #991b1b;
-}
+/* RENEWABLE Tab - Red when active */
 #recordTabs #tab-renewal.active {
-    background-color: #fef2f2 !important;
-    border: 1px solid #ef4444 !important;
-    color: #991b1b !important;
-    box-shadow: 0 4px 6px -1px rgba(239, 68, 68, 0.1);
+    background-color: #d63638 !important;
+    color: white !important;
 }
-
-/* Badge Styling inside buttons */
-.badge-count {
-    font-size: 11px;
-    padding: 2px 8px;
-    border-radius: 20px;
-    margin-left: 8px;
-    font-weight: 700;
-}
-
     </style>
 </head>
 <body>
@@ -164,7 +138,7 @@
         </div>
 
         <div class="wp-card mb-3 p-2"><input type="text" id="tableSearch" class="form-control border-0 shadow-none" placeholder="Search..." onkeyup="filterTableData()"></div>
-        <div class="nav nav-pills" id="recordTabs">
+        <!--<div class="nav nav-pills" id="recordTabs">
                 <button class="nav-link btn-sm fw-bold active me-2" id="tab-all" onclick="switchTab('all')">
                     ALL
                 </button>
@@ -174,7 +148,13 @@
                 <button class="nav-link btn-sm fw-bold text-danger border-danger" id="tab-renewal" onclick="switchTab('renewal')">
                     RENEWABLE <span class="badge bg-danger ms-1" id="count-renewal">0</span>
                 </button>
-            </div>
+            </div>-->
+
+            <div id="recordTabs" class="nav nav-pills mb-3">
+    <button class="nav-link active" id="tab-all" onclick="switchTab('all')">All Records</button>
+    <button class="nav-link" id="tab-followup" onclick="switchTab('follow-up')">Follow-up</button>
+    <button class="nav-link" id="tab-renewal" onclick="switchTab('renewal')">Renewable</button>
+</div>
         </div>
         <div class="wp-card">
             <div class="table-responsive">
@@ -252,6 +232,11 @@
     </section>
 </main>
 
+<!--<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+<script src="script.js"></script>-->
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
 <script src="script.js"></script>
